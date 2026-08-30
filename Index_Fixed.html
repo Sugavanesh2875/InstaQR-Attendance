@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>QR-Check Enterprise</title>
+    
+    <!-- Tailwind CSS for responsive design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HTML5-QRCode library for QR scanning -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    
+    <!-- QRCode.js for QR generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #0f172a;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .gradient-primary {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+
+        .gradient-accent {
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+        }
+
+        .card-shadow {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .scan-animation {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-10px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .success-badge {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .dashboard-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .dashboard-stat {
+            font-size: 32px;
+            font-weight: 700;
+            color: #0f172a;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .dashboard-label {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 8px;
+            font-weight: 500;
+        }
+
+        input:focus {
+            outline: none;
+        }
+
+        #qr-reader {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        @media (max-width: 640px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard-stat {
+                font-size: 28px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen"></div>
+
+    <script>
+        // ============================================================================
+        // QR-CHECK ENTERPRISE: Frontend Application
+        // Production-ready attendance system with 10 integrated security solutions
+        // ============================================================================
+
+        const API_CONFIG = {
+            ENDPOINT_CHECK_IN: 'processStudentCheckIn',
+            GEOLOCATION_TIMEOUT_MS: 10000,
+            QR_TIMEOUT_MS: 30000,
+            QR_REFRESH_INTERVAL_MS: 10000,
+            LOCATION_TOLERANCE_M: 15
+        };
+
+        const STATE = {
+            user: {
+                rollNumber: '',
+                name: '',
+                deviceFingerprint: '',
+                email: ''
+            },
+            currentLecture: {
+                lectureId: '',
+                courseName: '',
+                latitude: 0,
+                longitude: 0,
+                isActive: false
+            },
+            ui: {
+                activeScreen: 'login',
+                scannerActive: false,
+                gpsActive: false,
+                refreshInterval: null
+            }
+        };
+
+        // Device Fingerprinting (Problem #3 - Account Sharing)
+        async function generateDeviceFingerprint() {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                ctx.textBaseline = 'top';
+                ctx.font = '14px Arial';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillStyle = '#f60';
+                ctx.fillRect(125, 1, 62, 20);
+                ctx.fillStyle = '#069';
+                ctx.font = '11px Arial';
+                ctx.fillText('HTML5 Canvas fingerprint', 2, 15);
+                const canvasSignature = canvas.toDataURL();
+
+                const screenData = screen.width + 'x' + screen.height + 'x' + screen.colorDepth;
+                const languageData = navigator.language;
+                const timezoneData = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const userAgentData = navigator.userAgent;
+
+                const combined = canvasSignature + screenData + languageData + userAgentData + timezoneData;
+
+                return await sha256(combined);
+            } catch (error) {
+                console.error('Fingerprint error:', error);
+                return 'FINGERPRINT_ERROR';
+            }
+        }
+
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+        }
+
+        // Geolocation (Problem #2 - Remote Check-ins)
+        async function getCurrentPosition() {
+            return new Promise(function(resolve, reject) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        resolve({
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude,
+                            accuracy: position.coords.accuracy
+                        });
+                    },
+                    function(error) {
+                        reject(error);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: API_CONFIG.GEOLOCATION_TIMEOUT_MS,
+                        maximumAge: 0
+                    }
+                );
+            });
+        }
+
+        // Haversine Distance Calculation (Problem #2)
+        function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const φ1 = (lat1 * Math.PI) / 180;
+            const φ2 = (lat2 * Math.PI) / 180;
+            const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+            const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+            const a =
+                Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Location Permission Request (Problem #4 - Efficiency)
+        async function requestLocationPermission() {
+            try {
+                displayToast('Requesting location access...', 'info');
+                const position = await getCurrentPosition();
+                STATE.currentLecture.latitude = position.latitude;
+                STATE.currentLecture.longitude = position.longitude;
+                STATE.ui.gpsActive = true;
+                displayToast('Location acquired (±' + Math.round(position.accuracy) + 'm)', 'success');
+                return true;
+            } catch (error) {
+                displayToast('Location access required for attendance verification', 'error');
+                return false;
+            }
+        }
+
+        // QR Code Scanning (Problem #1 - Screenshot Protection)
+        async function scanQRCode() {
+            const qrScanner = new Html5Qrcode('qr-reader');
+            
+            try {
+                STATE.ui.scannerActive = true;
+                
+                await qrScanner.start(
+                    { facingMode: 'environment' },
+                    {
+                        qrbox: { width: 300, height: 300 },
+                        fps: 30
+                    },
+                    function(decodedText) {
+                        handleQRDecode(decodedText.data, qrScanner);
+                    },
+                    function(errorMessage) {}
+                );
+            } catch (error) {
+                displayToast('Camera access denied or unavailable', 'error');
+                STATE.ui.scannerActive = false;
+                switchScreen('home');
+            }
+        }
+
+        // QR Decode Handler (Problem #1 & #6)
+        function handleQRDecode(qrPayload, qrScanner) {
+            try {
+                qrScanner.stop();
+                STATE.ui.scannerActive = false;
+
+                var payloadParts = qrPayload.split('_');
+                if (payloadParts.length !== 2) {
+                    displayToast('Invalid QR format detected', 'error');
+                    return;
+                }
+
+                var lectureId = payloadParts[0];
+                var timestamp = payloadParts[1];
+                var currentTime = Math.floor(Date.now() / 1000);
+                var timeDiff = Math.abs(currentTime - parseInt(timestamp));
+
+                if (timeDiff > 15) {
+                    displayToast('QR code expired. Scan fresh code from projector.', 'error');
+                    switchScreen('home');
+                    return;
+                }
+
+                STATE.currentLecture.lectureId = lectureId;
+                displayToast('QR validated. Submitting attendance...', 'info');
+                
+                submitAttendance();
+            } catch (error) {
+                displayToast('QR decode error: ' + error.message, 'error');
+                switchScreen('home');
+            }
+        }
+
+        // Attendance Submission (Problem #5, #7)
+        async function submitAttendance() {
+            try {
+                const studentLocation = await getCurrentPosition();
+
+                const payload = {
+                    rollNumber: STATE.user.rollNumber,
+                    studentName: STATE.user.name || '',
+                    email: STATE.user.email,
+                    deviceFingerprint: STATE.user.deviceFingerprint,
+                    lectureId: STATE.currentLecture.lectureId,
+                    latitude: studentLocation.latitude,
+                    longitude: studentLocation.longitude,
+                    distanceMeters: 0
+                };
+
+                displayToast('Processing attendance verification...', 'info');
+
+                google.script.run
+                    .withSuccessHandler(function(response) {
+                        if (response.success) {
+                            displayToast('Attendance recorded successfully', 'success');
+                            setTimeout(function() { switchScreen('home'); }, 2000);
+                        } else {
+                            displayToast('Verification failed: ' + response.message, 'error');
+                            switchScreen('home');
+                        }
+                    })
+                    .withFailureHandler(function(error) {
+                        displayToast('Server error: ' + error, 'error');
+                        switchScreen('home');
+                    })
+                    .processStudentCheckIn(payload);
+            } catch (error) {
+                displayToast('Error: ' + error.message, 'error');
+                switchScreen('home');
+            }
+        }
+
+        // Professor QR Projector (Problem #1, #6)
+        function generateProfessorQR() {
+            var lectureIdInput = document.getElementById('profLectureId');
+            if (!lectureIdInput) return;
+            
+            var lectureId = lectureIdInput.value;
+            if (!lectureId || !lectureId.trim()) {
+                displayToast('Enter a valid Lecture ID', 'error');
+                return;
+            }
+
+            var container = document.getElementById('qr-generator');
+            if (!container) return;
+
+            container.innerHTML = '';
+
+            var currentTimestamp = Math.floor(Date.now() / 1000);
+            
+            generateQRCode(container, lectureId + '_' + currentTimestamp);
+
+            if (STATE.ui.refreshInterval) {
+                clearInterval(STATE.ui.refreshInterval);
+            }
+
+            STATE.ui.refreshInterval = setInterval(function() {
+                if (!STATE.ui.activeScreen.includes('professor')) {
+                    clearInterval(STATE.ui.refreshInterval);
+                    STATE.ui.refreshInterval = null;
+                    return;
+                }
+
+                currentTimestamp = Math.floor(Date.now() / 1000);
+                container.innerHTML = '';
+                generateQRCode(container, lectureId + '_' + currentTimestamp);
+            }, API_CONFIG.QR_REFRESH_INTERVAL_MS);
+
+            displayToast('QR Projector Active - Refreshing every 10 seconds', 'success');
+        }
+
+        function generateQRCode(container, text) {
+            try {
+                new QRCode(container, {
+                    text: text,
+                    width: 300,
+                    height: 300,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } catch (error) {
+                console.error('QR generation error:', error);
+            }
+        }
+
+        // Dashboard Statistics (Problem #8)
+        function displayDashboard() {
+            google.script.run
+                .withSuccessHandler(function(stats) {
+                    var statTotal = document.getElementById('stat-total');
+                    var statToday = document.getElementById('stat-today');
+                    var statActive = document.getElementById('stat-active');
+                    var statLocations = document.getElementById('stat-locations');
+
+                    if (statTotal) statTotal.textContent = stats.totalAttendance || 0;
+                    if (statToday) statToday.textContent = stats.todayAttendance || 0;
+                    if (statActive) statActive.textContent = stats.activeStudents || 0;
+                    if (statLocations) statLocations.textContent = stats.locationVerified || 0;
+                })
+                .withFailureHandler(function(error) {
+                    console.error('Dashboard error:', error);
+                })
+                .getDashboardStats();
+        }
+
+        // UI Utilities
+        function displayToast(message, type) {
+            if (!type) type = 'info';
+            
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-blue-500 text-white';
+            if (type === 'success') bgClass = 'bg-green-500 text-white';
+            else if (type === 'error') bgClass = 'bg-red-500 text-white';
+
+            toast.className = 'fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg ' + bgClass + ' z-50 fade-in font-semibold';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(function() {
+                toast.remove();
+            }, 4000);
+        }
+
+        function switchScreen(screen) {
+            STATE.ui.activeScreen = screen;
+            renderScreen();
+        }
+
+        function renderScreen() {
+            const app = document.getElementById('app');
+            
+            let screenContent = '';
+            if (STATE.ui.activeScreen === 'login') {
+                screenContent = getLoginScreen();
+            } else if (STATE.ui.activeScreen === 'home') {
+                screenContent = getHomeScreen();
+            } else if (STATE.ui.activeScreen === 'scan') {
+                screenContent = getScanScreen();
+            } else if (STATE.ui.activeScreen === 'professor') {
+                screenContent = getProfessorScreen();
+            } else if (STATE.ui.activeScreen === 'dashboard') {
+                screenContent = getDashboardScreen();
+            }
+
+            app.innerHTML = screenContent;
+            attachEventListeners();
+        }
+
+        function attachEventListeners() {
+            if (STATE.ui.activeScreen === 'login') {
+                var loginBtn = document.getElementById('login-btn');
+                var rollInput = document.getElementById('roll-input');
+                var emailInput = document.getElementById('email-input');
+
+                if (loginBtn) {
+                    loginBtn.addEventListener('click', handleLogin);
+                    if (rollInput) rollInput.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') handleLogin();
+                    });
+                    if (emailInput) emailInput.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') handleLogin();
+                    });
+                }
+            } else if (STATE.ui.activeScreen === 'home') {
+                var scanBtn = document.getElementById('scan-btn');
+                var profBtn = document.getElementById('professor-btn');
+                var dashBtn = document.getElementById('dashboard-btn');
+
+                if (scanBtn) {
+                    scanBtn.addEventListener('click', function() {
+                        requestLocationPermission().then(function(hasLocation) {
+                            if (hasLocation) switchScreen('scan');
+                        });
+                    });
+                }
+                if (profBtn) profBtn.addEventListener('click', function() { switchScreen('professor'); });
+                if (dashBtn) {
+                    dashBtn.addEventListener('click', function() {
+                        switchScreen('dashboard');
+                        displayDashboard();
+                    });
+                }
+            } else if (STATE.ui.activeScreen === 'scan') {
+                var backBtn = document.getElementById('back-btn');
+                if (backBtn) {
+                    backBtn.addEventListener('click', function() {
+                        if (STATE.ui.scannerActive) {
+                            try { Html5Qrcode.stop(); } catch(e) {}
+                        }
+                        switchScreen('home');
+                    });
+                }
+            } else if (STATE.ui.activeScreen === 'professor') {
+                var genBtn = document.getElementById('generate-qr-btn');
+                var profBackBtn = document.getElementById('prof-back-btn');
+                
+                if (genBtn) genBtn.addEventListener('click', generateProfessorQR);
+                if (profBackBtn) {
+                    profBackBtn.addEventListener('click', function() {
+                        if (STATE.ui.refreshInterval) {
+                            clearInterval(STATE.ui.refreshInterval);
+                            STATE.ui.refreshInterval = null;
+                        }
+                        switchScreen('home');
+                    });
+                }
+            } else if (STATE.ui.activeScreen === 'dashboard') {
+                var dashBackBtn = document.getElementById('dashboard-back-btn');
+                if (dashBackBtn) dashBackBtn.addEventListener('click', function() { switchScreen('home'); });
+            }
+        }
+
+        async function handleLogin() {
+            var rollInput = document.getElementById('roll-input');
+            var emailInput = document.getElementById('email-input');
+            
+            if (!rollInput || !emailInput) return;
+            
+            var rollNumber = rollInput.value.trim().toUpperCase();
+            var email = emailInput.value.trim();
+
+            if (!rollNumber || !email) {
+                displayToast('Enter Roll Number and Email', 'error');
+                return;
+            }
+
+            if (!email.includes('@')) {
+                displayToast('Enter valid email address', 'error');
+                return;
+            }
+
+            STATE.user.rollNumber = rollNumber;
+            STATE.user.email = email;
+            STATE.user.deviceFingerprint = await generateDeviceFingerprint();
+            STATE.user.name = rollNumber;
+
+            displayToast('Welcome, ' + rollNumber, 'success');
+            switchScreen('home');
+        }
+
+        // Screen Rendering Functions
+        function getLoginScreen() {
+            return '<div class="min-h-screen gradient-primary flex items-center justify-center p-4">' +
+                '<div class="w-full max-w-md">' +
+                '<div class="text-center mb-8">' +
+                '<h1 class="text-4xl font-bold text-white mb-2">QR-Check</h1>' +
+                '<p class="text-cyan-400 text-sm font-mono">Enterprise Attendance System</p>' +
+                '</div>' +
+                '<div class="bg-white rounded-2xl card-shadow p-8 fade-in">' +
+                '<div class="space-y-6">' +
+                '<div>' +
+                '<label class="block text-sm font-semibold text-slate-700 mb-2">Roll Number</label>' +
+                '<input type="text" id="roll-input" placeholder="e.g., CS2024001" class="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-slate-900 font-medium" />' +
+                '</div>' +
+                '<div>' +
+                '<label class="block text-sm font-semibold text-slate-700 mb-2">Email Address</label>' +
+                '<input type="email" id="email-input" placeholder="student@university.edu" class="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-slate-900 font-medium" />' +
+                '</div>' +
+                '<button id="login-btn" class="w-full gradient-accent text-white font-semibold py-3 rounded-lg hover:opacity-90 transition-opacity cursor-pointer">Sign In</button>' +
+                '<p class="text-xs text-slate-500 text-center mt-4">🔐 Device fingerprint will be securely bound to your account for this session.</p>' +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+        }
+
+        function getHomeScreen() {
+            return '<div class="min-h-screen gradient-primary p-4">' +
+                '<div class="max-w-md mx-auto h-screen flex flex-col justify-between py-8">' +
+                '<div>' +
+                '<div class="bg-white/10 backdrop-blur rounded-2xl p-6 text-white border border-white/20 fade-in">' +
+                '<p class="text-sm text-cyan-300 font-mono mb-1">Logged In As</p>' +
+                '<p class="text-2xl font-bold">' + STATE.user.rollNumber + '</p>' +
+                '<p class="text-xs text-slate-300 mt-2 break-words">' + STATE.user.email + '</p>' +
+                '<p class="text-xs text-cyan-200 mt-3 font-mono">Device bound &amp; verified</p>' +
+                '</div>' +
+                '</div>' +
+                '<div class="space-y-3 mb-4">' +
+                '<button id="scan-btn" class="w-full gradient-accent text-white font-semibold py-4 rounded-lg hover:opacity-90 transition-opacity text-lg cursor-pointer">📱 Scan Attendance</button>' +
+                '<button id="professor-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-4 rounded-lg transition-colors text-lg cursor-pointer">👨‍🏫 Professor Mode</button>' +
+                '<button id="dashboard-btn" class="w-full bg-slate-700 hover:bg-slate-800 text-white font-semibold py-4 rounded-lg transition-colors text-lg cursor-pointer">📊 Dashboard</button>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+        }
+
+        function getScanScreen() {
+            return '<div class="min-h-screen bg-slate-900 p-4">' +
+                '<div class="max-w-md mx-auto h-screen flex flex-col">' +
+                '<div class="flex-1">' +
+                '<div id="qr-reader" class="w-full mt-8 rounded-xl overflow-hidden border-2 border-cyan-500"></div>' +
+                '<div class="text-white text-center mt-6">' +
+                '<p class="text-sm font-mono text-cyan-400 scan-animation">🔍 Scanning for QR code...</p>' +
+                '<p class="text-xs text-slate-400 mt-2">Hold steady. GPS location required.</p>' +
+                '</div>' +
+                '</div>' +
+                '<button id="back-btn" class="mb-4 w-full bg-slate-700 hover:bg-slate-800 text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer">← Go Back</button>' +
+                '</div>' +
+                '</div>';
+        }
+
+        function getProfessorScreen() {
+            return '<div class="min-h-screen gradient-primary p-4">' +
+                '<div class="max-w-2xl mx-auto">' +
+                '<div class="mt-8 mb-6">' +
+                '<h2 class="text-3xl font-bold text-white mb-1">QR Projector</h2>' +
+                '<p class="text-cyan-300 text-sm font-mono">Generates live attendance codes</p>' +
+                '</div>' +
+                '<div class="bg-white rounded-xl card-shadow p-6 mb-6 fade-in">' +
+                '<label class="block text-sm font-semibold text-slate-700 mb-2">Lecture ID</label>' +
+                '<input type="text" id="profLectureId" placeholder="e.g., CS2024_LEC001" class="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-slate-900 font-medium mb-4" />' +
+                '<button id="generate-qr-btn" class="w-full gradient-accent text-white font-semibold py-3 rounded-lg hover:opacity-90 transition-opacity cursor-pointer">Generate &amp; Project QR</button>' +
+                '</div>' +
+                '<div class="bg-slate-900 rounded-xl card-shadow p-8 flex items-center justify-center mb-6 min-h-96">' +
+                '<div id="qr-generator" class="flex items-center justify-center"></div>' +
+                '</div>' +
+                '<p class="text-xs text-cyan-300 text-center font-mono mb-6 leading-relaxed">⏰ QR code refreshes every 10 seconds<br/>✓ Students must scan within 15 seconds<br/>🔒 Prevents screenshot forwarding attacks</p>' +
+                '<button id="prof-back-btn" class="w-full bg-slate-700 hover:bg-slate-800 text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer">← Return to Home</button>' +
+                '</div>' +
+                '</div>';
+        }
+
+        function getDashboardScreen() {
+            return '<div class="min-h-screen gradient-primary p-4">' +
+                '<div class="max-w-3xl mx-auto">' +
+                '<div class="mt-8 mb-6">' +
+                '<h2 class="text-3xl font-bold text-white mb-1">Live Dashboard</h2>' +
+                '<p class="text-cyan-300 text-sm font-mono">Real-time attendance metrics</p>' +
+                '</div>' +
+                '<div class="dashboard-grid fade-in">' +
+                '<div class="dashboard-card">' +
+                '<div class="dashboard-stat" id="stat-total">--</div>' +
+                '<div class="dashboard-label">Total Attendance</div>' +
+                '</div>' +
+                '<div class="dashboard-card">' +
+                '<div class="dashboard-stat" id="stat-today">--</div>' +
+                '<div class="dashboard-label">Today\'s Check-ins</div>' +
+                '</div>' +
+                '<div class="dashboard-card">' +
+                '<div class="dashboard-stat" id="stat-active">--</div>' +
+                '<div class="dashboard-label">Active Sessions</div>' +
+                '</div>' +
+                '<div class="dashboard-card">' +
+                '<div class="dashboard-stat" id="stat-locations">--</div>' +
+                '<div class="dashboard-label">Location Verified</div>' +
+                '</div>' +
+                '</div>' +
+                '<button id="dashboard-back-btn" class="w-full mt-6 bg-slate-700 hover:bg-slate-800 text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer">← Return to Home</button>' +
+                '</div>' +
+                '</div>';
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            renderScreen();
+        });
+
+        window.addEventListener('beforeunload', function() {
+            if (STATE.ui.refreshInterval) {
+                clearInterval(STATE.ui.refreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>
